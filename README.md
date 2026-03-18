@@ -165,4 +165,4 @@ exemptNamespaces:
 
 ## Author
 
-**Arnav Ranjan** — DevOps Engineer | [LinkedIn](https://linkedin.com/in/arnavranjan-89162320a) | [GitHub](https://github.com/Arnav1511)
+**Arnav Ranjan** — DevOps Engineer | [LinkedIn](https://www.linkedin.com/in/arnav-ranjan-89162320a/) | [GitHub](https://github.com/Arnav1511)
