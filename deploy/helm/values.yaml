@@ -1,0 +1,28 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/arnav1511/k8s-policy-webhook
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  port: 443
+  targetPort: 8443
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+webhook:
+  failurePolicy: Fail
+  namespaceSelector:
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+          - kube-system
+          - kube-public

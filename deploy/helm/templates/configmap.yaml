@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-policy
+  namespace: {{ .Release.Namespace }}
+data:
+  policy.yaml: |
+    blockLatestTag: true
+    requireResourceLimits: true
+    requireLabels:
+      - app
+      - owner
+    blockedRegistries: []
+    blockPrivilegeEscalation: true
+    maxReplicaCount: 50
+    exemptNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - argocd
+      - monitoring

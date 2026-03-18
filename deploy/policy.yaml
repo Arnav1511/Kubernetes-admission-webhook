@@ -1,0 +1,32 @@
+# Policy configuration for k8s-policy-webhook
+# Each rule can be toggled independently.
+
+# Reject pods using :latest or untagged images
+blockLatestTag: true
+
+# Reject containers without explicit CPU and memory limits
+requireResourceLimits: true
+
+# Labels that must be present on every pod
+requireLabels:
+  - app
+  - owner
+
+# Reject images pulled from these registries
+blockedRegistries:
+  - "untrusted.io/"
+  - "docker.io/sketchy/"
+
+# Reject containers running in privileged mode or with escalation
+blockPrivilegeEscalation: true
+
+# Maximum replica count for Deployments (0 = no limit)
+maxReplicaCount: 50
+
+# Namespaces excluded from all policy checks
+exemptNamespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - argocd
+  - monitoring
