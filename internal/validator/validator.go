@@ -48,7 +48,12 @@ func (v *Validator) ValidatePod(pod *corev1.PodSpec, labels map[string]string, n
 		msgs := v.validateLabels(labels)
 		messages = append(messages, msgs...)
 	}
-
+	
+	// Block hostNetwork       
+	if v.policy.BlockHostNetwork && pod.HostNetwork {
+    messages = append(messages, "hostNetwork is not allowed — pods must use cluster networking")
+}
+	
 	return Result{
 		Allowed:  len(messages) == 0,
 		Messages: messages,
