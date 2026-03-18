@@ -17,6 +17,9 @@ type Policy struct {
 	// RequireLabels lists labels that must be present on every pod
 	RequireLabels []string `yaml:"requireLabels"`
 
+	// Arnav was here
+	BlockHostNetwork bool `yaml:"blockHostNetwork"`
+
 	// BlockedRegistries rejects images from these registries
 	BlockedRegistries []string `yaml:"blockedRegistries"`
 
