@@ -6,7 +6,7 @@ blockLatestTag: true
 
 # Reject containers without explicit CPU and memory limits
 requireResourceLimits: true
-
+blockHostNetwork: true
 # Labels that must be present on every pod
 requireLabels:
   - app
