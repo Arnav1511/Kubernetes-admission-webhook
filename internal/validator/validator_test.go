@@ -166,6 +166,32 @@ func TestExemptNamespaces(t *testing.T) {
 	}
 }
 
+func TestBlockHostNetwork(t *testing.T) {
+    v := New(&config.Policy{BlockHostNetwork: true})
+
+    tests := []struct {
+        name        string
+        hostNetwork bool
+        allowed     bool
+    }{
+        {"hostNetwork true", true, false},
+        {"hostNetwork false", false, true},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            pod := &corev1.PodSpec{
+                HostNetwork: tt.hostNetwork,
+                Containers:  []corev1.Container{{Name: "test", Image: "nginx:1.25"}},
+            }
+            result := v.ValidatePod(pod, map[string]string{}, "default")
+            if result.Allowed != tt.allowed {
+                t.Errorf("got allowed=%v, want %v", result.Allowed, tt.allowed)
+            }
+        })
+    }
+}
+
 func TestBlockedRegistries(t *testing.T) {
 	v := New(&config.Policy{
 		BlockedRegistries: []string{"untrusted.io/", "docker.io/sketchy/"},
