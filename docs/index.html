@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K8s Policy Webhook — Interactive Walkthrough</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#ffffff;--bg2:#f5f5f0;--text:#1a1a1a;--text2:#6b6b68;--text3:#9c9a92;--border:#e0ded6;--blue:#E6F1FB;--blue-t:#0C447C;--green:#E1F5EE;--green-t:#085041;--pink:#FBEAF0;--pink-t:#72243E;--amber:#FAEEDA;--amber-t:#633806;--accent:#185FA5;--danger:#A32D2D;--radius:10px}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#2c2c2a;--text:#e8e6de;--text2:#9c9a92;--text3:#6b6b68;--border:#444441;--blue:#042C53;--blue-t:#B5D4F4;--green:#04342C;--green-t:#9FE1CB;--pink:#4B1528;--pink-t:#F4C0D1;--amber:#412402;--amber-t:#FAC775;--accent:#85B7EB;--danger:#F09595}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;max-width:720px;margin:0 auto;padding:2rem 1.5rem}
+.header{margin-bottom:2.5rem;padding-bottom:1.5rem;border-bottom:0.5px solid var(--border)}
+.header h1{font-size:22px;font-weight:500;margin-bottom:4px}
+.header p{font-size:14px;color:var(--text2)}
+.step{display:none;animation:fadeIn .3s ease}
+.step.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.pills{display:flex;gap:6px;margin:0 0 1.5rem}
+.pill{width:10px;height:10px;border-radius:50%;background:var(--border);cursor:pointer;transition:all .2s}
+.pill.done{background:var(--accent)}
+.pill.current{background:var(--accent);transform:scale(1.3)}
+.nav{display:flex;gap:12px;margin-top:2rem;align-items:center}
+.nav button{padding:8px 20px;border-radius:var(--radius);border:0.5px solid var(--border);background:transparent;color:var(--text);font-size:14px;cursor:pointer;transition:all .15s}
+.nav button:hover:not(:disabled){background:var(--bg2)}
+.nav button:active:not(:disabled){transform:scale(0.98)}
+.nav button:disabled{opacity:0.35;cursor:default}
+.card{background:var(--bg2);border-radius:var(--radius);padding:1rem 1.25rem;margin:1rem 0}
+.code{font-family:'SF Mono',Consolas,'Liberation Mono',monospace;font-size:13px;background:var(--bg2);padding:14px 18px;border-radius:var(--radius);overflow-x:auto;white-space:pre;line-height:1.7;color:var(--text);border:0.5px solid var(--border)}
+.label{font-size:12px;padding:3px 10px;border-radius:6px;display:inline-block;margin:0 4px 8px 0;font-weight:500}
+.l-go{background:var(--green);color:var(--green-t)}
+.l-k8s{background:var(--blue);color:var(--blue-t)}
+.l-sec{background:var(--pink);color:var(--pink-t)}
+.l-helm{background:var(--amber);color:var(--amber-t)}
+.flow-row{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
+.flow-box{padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500}
+.flow-arrow{color:var(--text3);font-size:16px}
+.stepnum{font-size:13px;color:var(--text3);margin-bottom:4px}
+.stitle{font-size:18px;font-weight:500;margin-bottom:12px}
+.sbody{font-size:15px;line-height:1.7;color:var(--text2)}
+.hl{color:var(--text);font-weight:500}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:600px){.grid2,.grid3{grid-template-columns:1fr}}
+.counter{font-size:13px;color:var(--text3);margin-left:auto}
+.pitch{font-size:14px;line-height:1.8;color:var(--text);font-style:italic;padding:1rem 1.25rem;background:var(--bg2);border-radius:var(--radius);border-left:3px solid var(--accent)}
+.keyboard-hint{font-size:12px;color:var(--text3);margin-top:8px;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="header">
+<h1>k8s-policy-webhook</h1>
+<p>Interactive walkthrough — Kubernetes admission webhook in Go</p>
+</div>
+
+<div class="pills" id="pills"></div>
+
+<div class="step" id="s0">
+<div class="stepnum">1 of 9</div>
+<div class="stitle">The big picture — what does this thing do?</div>
+<div class="sbody">
+Imagine you're a security guard at a club entrance. Every person (pod/deployment) trying to get into the club (your Kubernetes cluster) has to pass through you first. You check their ID, their dress code, their guest list status. If they fail any check — rejected, no entry.
+<br><br>
+That's exactly what this webhook does. It sits between <span class="hl">kubectl apply</span> and the actual resource creation. Kubernetes asks your webhook: "should I allow this?" — and your code decides.
+</div>
+<div class="flow-row" style="margin-top:16px">
+<div class="flow-box" style="background:var(--blue);color:var(--blue-t)">kubectl apply</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--amber);color:var(--amber-t)">API server</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--pink);color:var(--pink-t)">Your webhook</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--green);color:var(--green-t)">Allow / Deny</div>
+</div>
+</div>
+
+<div class="step" id="s1">
+<div class="stepnum">2 of 9</div>
+<div class="stitle">The 4 files that matter</div>
+<div class="sbody">
+The entire brain of this project is in 4 Go files. That's it. Everything else (Dockerfile, Helm, CI) is packaging.
+</div>
+<div class="card">
+<div class="grid2">
+<div>
+<span class="label l-go">config.go</span>
+<div style="font-size:13px;color:var(--text2);line-height:1.6">Loads the YAML file that says which rules are on/off. Just a struct + a file reader.</div>
+</div>
+<div>
+<span class="label l-go">validator.go</span>
+<div style="font-size:13px;color:var(--text2);line-height:1.6">The brain. Every policy check lives here. This is where pods get approved or rejected.</div>
+</div>
+<div>
+<span class="label l-k8s">handler.go</span>
+<div style="font-size:13px;color:var(--text2);line-height:1.6">Receives the HTTP request from Kubernetes, unpacks it, sends it to the validator, packs the response back.</div>
+</div>
+<div>
+<span class="label l-k8s">main.go</span>
+<div style="font-size:13px;color:var(--text2);line-height:1.6">Starts the HTTPS server, loads TLS certs, handles graceful shutdown. The entry point.</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="step" id="s2">
+<div class="stepnum">3 of 9</div>
+<div class="stitle">config.go — the rulebook</div>
+<div class="sbody">
+This is the simplest file. It defines a Go struct where each field is a policy toggle, then reads a YAML file to fill it in.
+</div>
+<div class="code">type Policy struct {
+    BlockLatestTag           bool     // reject :latest images
+    RequireResourceLimits    bool     // must set CPU + memory
+    RequireLabels            []string // e.g. ["app","owner"]
+    BlockedRegistries        []string // e.g. ["untrusted.io/"]
+    BlockPrivilegeEscalation bool     // no privileged containers
+    BlockHostNetwork         bool     // YOUR policy!
+    MaxReplicaCount          int      // cap replicas
+    ExemptNamespaces         []string // skip kube-system etc
+}</div>
+<div class="sbody" style="margin-top:12px">
+The <span class="hl">Load()</span> function reads the YAML, the <span class="hl">Default()</span> function returns sane defaults if the file is missing. That's the entire file.
+</div>
+</div>
+
+<div class="step" id="s3">
+<div class="stepnum">4 of 9</div>
+<div class="stitle">validator.go — the brain</div>
+<div class="sbody">
+This is where it gets real. When a pod comes in, <span class="hl">ValidatePod()</span> runs every check in sequence. Each check either passes silently or appends an error message. At the end — if there are zero messages, the pod is allowed.
+</div>
+<div class="card">
+<div style="font-size:14px;font-weight:500;margin-bottom:8px">The check sequence:</div>
+<div class="flow-row">
+<div class="flow-box" style="background:var(--bg);border:0.5px solid var(--border);font-size:12px">Exempt namespace?</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--bg);border:0.5px solid var(--border);font-size:12px">Image tag check</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--bg);border:0.5px solid var(--border);font-size:12px">Resource limits</div>
+</div>
+<div class="flow-row">
+<div class="flow-box" style="background:var(--bg);border:0.5px solid var(--border);font-size:12px">Privilege check</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--bg);border:0.5px solid var(--border);font-size:12px">Registry check</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--bg);border:0.5px solid var(--border);font-size:12px">Label check</div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-box" style="background:var(--green);color:var(--green-t);font-size:12px">HostNetwork</div>
+</div>
+</div>
+<div class="sbody" style="margin-top:8px">The green one at the end is the policy <span class="hl">you</span> added.</div>
+</div>
+
+<div class="step" id="s4">
+<div class="stepnum">5 of 9</div>
+<div class="stitle">Let's trace a real rejection</div>
+<div class="sbody">
+Someone runs: <span class="hl">kubectl run bad-pod --image=nginx</span>
+<br><br>
+What happens inside your webhook:
+</div>
+<div class="card">
+<div style="font-size:13px;line-height:2.2;color:var(--text2)">
+1. <span class="hl">Image = "nginx"</span> — no tag, no colon. <span style="color:var(--danger)">isLatestOrUntagged() returns true</span><br>
+2. <span class="hl">Resources.Limits = nil</span> — no CPU, no memory set. <span style="color:var(--danger)">Violation added</span><br>
+3. <span class="hl">Labels = {}</span> — missing "app" and "owner". <span style="color:var(--danger)">Two violations added</span><br>
+4. Messages array has 4 items. <span style="color:var(--danger)">len(messages) != 0 &rarr; Allowed = false</span><br>
+5. API server gets the denial &rarr; user sees the error in their terminal
+</div>
+</div>
+</div>
+
+<div class="step" id="s5">
+<div class="stepnum">6 of 9</div>
+<div class="stitle">handler.go — the translator</div>
+<div class="sbody">
+Kubernetes doesn't send you a Pod object directly. It wraps everything in an <span class="hl">AdmissionReview</span> envelope. The handler's job:
+</div>
+<div class="card" style="font-size:13px;line-height:2.2;color:var(--text2)">
+1. Read the raw HTTP body (JSON)<br>
+2. Unmarshal it into an <span class="hl">AdmissionReview</span> struct<br>
+3. Check <span class="hl">req.Kind.Kind</span> — is it a "Pod" or "Deployment"?<br>
+4. Unmarshal the inner <span class="hl">req.Object.Raw</span> into the right Go type<br>
+5. Call <span class="hl">validator.ValidatePod()</span> or <span class="hl">ValidateDeployment()</span><br>
+6. Wrap the result back into an <span class="hl">AdmissionResponse</span><br>
+7. Send it back as JSON
+</div>
+<div class="sbody" style="margin-top:8px">
+Think of it as a translator between "HTTP world" and "Kubernetes object world."
+</div>
+</div>
+
+<div class="step" id="s6">
+<div class="stepnum">7 of 9</div>
+<div class="stitle">main.go — the server</div>
+<div class="sbody">
+This is the boring-but-important part. It does 4 things:
+</div>
+<div class="card" style="font-size:14px;line-height:2.4;color:var(--text2)">
+<span class="hl">1. Loads config</span> — reads policy.yaml, falls back to defaults<br>
+<span class="hl">2. Loads TLS certs</span> — K8s only talks to webhooks over HTTPS<br>
+<span class="hl">3. Registers routes</span> — /validate (the webhook) and /healthz (liveness probe)<br>
+<span class="hl">4. Graceful shutdown</span> — catches SIGTERM, drains connections cleanly
+</div>
+<div class="sbody" style="margin-top:8px">
+The TLS part is why the <span class="hl">hack/gen-certs.sh</span> script exists — you need certs to test locally.
+</div>
+</div>
+
+<div class="step" id="s7">
+<div class="stepnum">8 of 9</div>
+<div class="stitle">The packaging — Dockerfile, Helm, CI</div>
+<div class="sbody">
+The Go code is the brain. Everything else gets it into a cluster:
+</div>
+<div class="card">
+<div class="grid3">
+<div>
+<span class="label l-sec">Dockerfile</span>
+<div style="font-size:12px;color:var(--text2);line-height:1.6">Multi-stage build. Compiles Go in alpine, copies binary to distroless. Runs as nonroot. Tiny, secure image.</div>
+</div>
+<div>
+<span class="label l-helm">Helm chart</span>
+<div style="font-size:12px;color:var(--text2);line-height:1.6">Deployment, Service, ValidatingWebhookConfiguration, ConfigMap. One helm install and everything is wired.</div>
+</div>
+<div>
+<span class="label l-k8s">GitHub Actions</span>
+<div style="font-size:12px;color:var(--text2);line-height:1.6">Test &rarr; Lint &rarr; Build &rarr; Push to GHCR. Runs on every push to main. Full CI pipeline.</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="step" id="s8">
+<div class="stepnum">9 of 9</div>
+<div class="stitle">How to explain this in an interview</div>
+<div class="sbody">
+When someone asks "tell me about this project," here's your 30-second pitch:
+</div>
+<div class="pitch">
+"I built a Kubernetes validating admission webhook in Go that enforces deployment policies at the cluster level. It intercepts every pod and deployment creation, checks things like image tags, resource limits, privilege escalation, and required labels — and rejects anything that violates policy. Policies are configurable via YAML so teams can tune them without changing code. It's packaged with Helm, runs on distroless with TLS, and has a full CI pipeline in GitHub Actions."
+</div>
+<div class="sbody" style="margin-top:16px">
+Then they'll ask follow-ups. The steps you just walked through are the answers.
+</div>
+</div>
+
+<div class="nav">
+<button id="prevBtn" onclick="go(-1)" disabled>Previous</button>
+<button id="nextBtn" onclick="go(1)">Next</button>
+<span class="counter" id="counter">1 / 9</span>
+</div>
+<div class="keyboard-hint">Use left/right arrow keys to navigate</div>
+
+<script>
+let cur=0;const total=9;
+function render(){
+document.querySelectorAll('.step').forEach((s,i)=>s.classList.toggle('active',i===cur));
+document.querySelectorAll('.pill').forEach((p,i)=>{p.className='pill';if(i<cur)p.classList.add('done');if(i===cur)p.classList.add('current');});
+document.getElementById('prevBtn').disabled=cur===0;
+document.getElementById('nextBtn').textContent=cur===total-1?'Start over':'Next';
+document.getElementById('counter').textContent=`${cur+1} / ${total}`;
+}
+function go(d){
+if(cur===total-1&&d===1){cur=0;render();return;}
+cur=Math.max(0,Math.min(total-1,cur+d));render();
+}
+const pp=document.getElementById('pills');
+for(let i=0;i<total;i++){const p=document.createElement('div');p.className='pill';p.onclick=()=>{cur=i;render();};pp.appendChild(p);}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')go(1);if(e.key==='ArrowLeft')go(-1);});
+render();
+</script>
+</body>
+</html>
