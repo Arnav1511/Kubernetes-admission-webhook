@@ -2,7 +2,7 @@
 bin/
 coverage
 coverage.out
-webhook
+/webhook
 
 # Local TLS material
 certs/
