@@ -41,9 +41,9 @@ jobs:
         run: go test -race -coverprofile=coverage.out ./...
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.62.2
+          version: v2.12.2
 
       - name: Set up Helm
         uses: azure/setup-helm@v5
