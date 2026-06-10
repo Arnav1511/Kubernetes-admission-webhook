@@ -99,6 +99,7 @@ jobs:
           ignore-unfixed: true
           format: sarif
           output: trivy-fs.sarif
+          limit-severities-for-sarif: true
           exit-code: "1"
 
       - name: Upload Trivy SARIF
