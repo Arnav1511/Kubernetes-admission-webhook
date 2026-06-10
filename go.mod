@@ -4,7 +4,7 @@ go 1.22
 
 require (
 	github.com/distribution/reference v0.6.0
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.28.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3
