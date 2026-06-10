@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-deployment
+  labels:
+    app: demo
+    owner: platform-team
+spec:
+  replicas: 100
+  selector:
+    matchLabels:
+      app: demo
+  template:
+    metadata:
+      labels:
+        app: demo
+        owner: platform-team
+    spec:
+      hostNetwork: true
+      containers:
+        - name: web
+          image: untrusted.io/demo/web:1.0.0
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false

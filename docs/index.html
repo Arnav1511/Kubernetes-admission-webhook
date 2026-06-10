@@ -114,7 +114,7 @@ This is the simplest file. It defines a Go struct where each field is a policy t
     RequireLabels            []string // e.g. ["app","owner"]
     BlockedRegistries        []string // e.g. ["untrusted.io/"]
     BlockPrivilegeEscalation bool     // no privileged containers
-    BlockHostNetwork         bool     // YOUR policy!
+    BlockHostNetwork         bool     // reject host networking
     MaxReplicaCount          int      // cap replicas
     ExemptNamespaces         []string // skip kube-system etc
 }</div>
@@ -148,7 +148,7 @@ This is where it gets real. When a pod comes in, <span class="hl">ValidatePod()<
 <div class="flow-box" style="background:var(--green);color:var(--green-t);font-size:12px">HostNetwork</div>
 </div>
 </div>
-<div class="sbody" style="margin-top:8px">The green one at the end is the policy <span class="hl">you</span> added.</div>
+<div class="sbody" style="margin-top:8px">The green one at the end rejects pods that try to use the node network namespace.</div>
 </div>
 
 <div class="step" id="s4">
@@ -199,7 +199,7 @@ This is the boring-but-important part. It does 4 things:
 <div class="card" style="font-size:14px;line-height:2.4;color:var(--text2)">
 <span class="hl">1. Loads config</span> — reads policy.yaml, falls back to defaults<br>
 <span class="hl">2. Loads TLS certs</span> — K8s only talks to webhooks over HTTPS<br>
-<span class="hl">3. Registers routes</span> — /validate (the webhook) and /healthz (liveness probe)<br>
+<span class="hl">3. Registers routes</span> — /validate (the webhook), /healthz, and /readyz<br>
 <span class="hl">4. Graceful shutdown</span> — catches SIGTERM, drains connections cleanly
 </div>
 <div class="sbody" style="margin-top:8px">
@@ -225,7 +225,7 @@ The Go code is the brain. Everything else gets it into a cluster:
 </div>
 <div>
 <span class="label l-k8s">GitHub Actions</span>
-<div style="font-size:12px;color:var(--text2);line-height:1.6">Test &rarr; Lint &rarr; Build &rarr; Push to GHCR. Runs on every push to main. Full CI pipeline.</div>
+<div style="font-size:12px;color:var(--text2);line-height:1.6">Test &rarr; Lint &rarr; Helm render &rarr; Docker build &rarr; Trivy scan. Pushes GHCR images only from main and version tags.</div>
 </div>
 </div>
 </div>
@@ -238,7 +238,7 @@ The Go code is the brain. Everything else gets it into a cluster:
 When someone asks "tell me about this project," here's your 30-second pitch:
 </div>
 <div class="pitch">
-"I built a Kubernetes validating admission webhook in Go that enforces deployment policies at the cluster level. It intercepts every pod and deployment creation, checks things like image tags, resource limits, privilege escalation, and required labels — and rejects anything that violates policy. Policies are configurable via YAML so teams can tune them without changing code. It's packaged with Helm, runs on distroless with TLS, and has a full CI pipeline in GitHub Actions."
+"I built a Kubernetes validating admission webhook in Go that enforces deployment policies at the cluster level. It intercepts every pod and deployment creation, checks things like image tags, resource limits, host networking, privilege escalation, and required labels — and rejects anything that violates policy. Policies are configurable via YAML so teams can tune them without changing code. It's packaged with Helm, runs on distroless with TLS, and has CI for tests, linting, image builds, and vulnerability scans."
 </div>
 <div class="sbody" style="margin-top:16px">
 Then they'll ask follow-ups. The steps you just walked through are the answers.

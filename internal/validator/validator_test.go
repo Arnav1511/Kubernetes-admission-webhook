@@ -18,12 +18,15 @@ func TestBlockLatestTag(t *testing.T) {
 		image   string
 		allowed bool
 	}{
-		{"explicit latest", "nginx:latest", false},
 		{"no tag", "nginx", false},
-		{"pinned tag", "nginx:1.25.3", true},
-		{"sha256 digest", "nginx@sha256:abc123", true},
-		{"registry with port and latest", "registry.io:5000/app:latest", false},
-		{"registry with port and tag", "registry.io:5000/app:v1.2", true},
+		{"explicit latest", "nginx:latest", false},
+		{"pinned semver tag", "nginx:1.25.3", true},
+		{"registry port without tag", "registry.example.com:5000/team/app", false},
+		{"registry port with latest", "registry.example.com:5000/team/app:latest", false},
+		{"registry port with version tag", "registry.example.com:5000/team/app:v1.2.3", true},
+		{"sha256 digest", "nginx@sha256:9f5c94be50fcb0e91d959879ac1b35d15ab00af16f012aef10444b2b1d861446", true},
+		{"empty image", "", false},
+		{"malformed image", "registry.example.com:5000/team/app:bad tag", false},
 	}
 
 	for _, tt := range tests {
@@ -152,8 +155,8 @@ func TestBlockPrivilegeEscalation(t *testing.T) {
 
 func TestExemptNamespaces(t *testing.T) {
 	v := New(&config.Policy{
-		BlockLatestTag:    true,
-		ExemptNamespaces:  []string{"kube-system"},
+		BlockLatestTag:   true,
+		ExemptNamespaces: []string{"kube-system"},
 	})
 
 	// This would normally fail (no tag) but kube-system is exempt
@@ -167,29 +170,29 @@ func TestExemptNamespaces(t *testing.T) {
 }
 
 func TestBlockHostNetwork(t *testing.T) {
-    v := New(&config.Policy{BlockHostNetwork: true})
+	v := New(&config.Policy{BlockHostNetwork: true})
 
-    tests := []struct {
-        name        string
-        hostNetwork bool
-        allowed     bool
-    }{
-        {"hostNetwork true", true, false},
-        {"hostNetwork false", false, true},
-    }
+	tests := []struct {
+		name        string
+		hostNetwork bool
+		allowed     bool
+	}{
+		{"hostNetwork true", true, false},
+		{"hostNetwork false", false, true},
+	}
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            pod := &corev1.PodSpec{
-                HostNetwork: tt.hostNetwork,
-                Containers:  []corev1.Container{{Name: "test", Image: "nginx:1.25"}},
-            }
-            result := v.ValidatePod(pod, map[string]string{}, "default")
-            if result.Allowed != tt.allowed {
-                t.Errorf("got allowed=%v, want %v", result.Allowed, tt.allowed)
-            }
-        })
-    }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.PodSpec{
+				HostNetwork: tt.hostNetwork,
+				Containers:  []corev1.Container{{Name: "test", Image: "nginx:1.25"}},
+			}
+			result := v.ValidatePod(pod, map[string]string{}, "default")
+			if result.Allowed != tt.allowed {
+				t.Errorf("got allowed=%v, want %v", result.Allowed, tt.allowed)
+			}
+		})
+	}
 }
 
 func TestBlockedRegistries(t *testing.T) {

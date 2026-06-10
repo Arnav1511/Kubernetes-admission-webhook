@@ -2,8 +2,12 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/arnav1511/k8s-policy-webhook
-  tag: latest
+  tag: "1.0.0"
   pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
 
 service:
   port: 443
@@ -17,8 +21,61 @@ resources:
     cpu: 50m
     memory: 64Mi
 
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: k8s-policy-webhook
+
+networkPolicy:
+  enabled: false
+  # Assumes API server traffic can be selected by namespace labels in your cluster.
+  ingressNamespaceSelector: {}
+  ingressPodSelector: {}
+
+certManager:
+  enabled: true
+  issuer:
+    create: true
+    kind: Issuer
+    group: cert-manager.io
+    name: ""
+    spec:
+      selfSigned: {}
+  certificate:
+    name: ""
+    secretName: ""
+    duration: 2160h
+    renewBefore: 360h
+
+tls:
+  # Required when certManager.enabled=false.
+  existingSecretName: ""
+
 webhook:
   failurePolicy: Fail
+  timeoutSeconds: 10
+  # Required when certManager.enabled=false. Must be the base64-encoded CA bundle.
+  caBundle: ""
   namespaceSelector:
     matchExpressions:
       - key: kubernetes.io/metadata.name
@@ -26,3 +83,21 @@ webhook:
         values:
           - kube-system
           - kube-public
+          - kube-node-lease
+
+policy:
+  blockLatestTag: true
+  requireResourceLimits: true
+  blockHostNetwork: true
+  requireLabels:
+    - app
+    - owner
+  blockedRegistries: []
+  blockPrivilegeEscalation: true
+  maxReplicaCount: 50
+  exemptNamespaces:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - argocd
+    - monitoring

@@ -1,12 +1,15 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ include "k8s-policy-webhook.fullname" . }}
   namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s-policy-webhook.labels" . | nindent 4 }}
 spec:
   selector:
-    app: {{ .Release.Name }}
+    {{- include "k8s-policy-webhook.selectorLabels" . | nindent 4 }}
   ports:
-    - port: {{ .Values.service.port }}
-      targetPort: {{ .Values.service.targetPort }}
+    - name: https
+      port: {{ .Values.service.port }}
+      targetPort: https
       protocol: TCP

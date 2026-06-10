@@ -1,20 +1,31 @@
+{{- if and (not .Values.certManager.enabled) (not .Values.webhook.caBundle) -}}
+{{- fail "webhook.caBundle is required when certManager.enabled=false. Provide the base64-encoded CA certificate bundle." -}}
+{{- end -}}
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ include "k8s-policy-webhook.fullname" . }}
+  labels:
+    {{- include "k8s-policy-webhook.labels" . | nindent 4 }}
+  {{- if .Values.certManager.enabled }}
   annotations:
-    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-tls
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "k8s-policy-webhook.certificateName" . }}
+  {{- end }}
 webhooks:
   - name: validate.policy.k8s.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
     clientConfig:
       service:
-        name: {{ .Release.Name }}
+        name: {{ include "k8s-policy-webhook.fullname" . }}
         namespace: {{ .Release.Namespace }}
         path: /validate
         port: {{ .Values.service.port }}
+      {{- if not .Values.certManager.enabled }}
+      caBundle: {{ required "webhook.caBundle is required when certManager.enabled=false" .Values.webhook.caBundle | quote }}
+      {{- end }}
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: [""]

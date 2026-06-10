@@ -1,28 +1,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ include "k8s-policy-webhook.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ .Release.Name }}
-    owner: platform-team
+    {{- include "k8s-policy-webhook.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ .Release.Name }}
+      {{- include "k8s-policy-webhook.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}
+        {{- include "k8s-policy-webhook.selectorLabels" . | nindent 8 }}
         owner: platform-team
+      annotations:
+        checksum/policy: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      serviceAccountName: {{ include "k8s-policy-webhook.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      topologySpreadConstraints:
+        {{- toYaml .Values.topologySpreadConstraints | nindent 8 }}
       containers:
         - name: webhook
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ required "image.tag is required; do not deploy an implicit latest tag" .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.service.targetPort }}
+            - name: https
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
           args:
             - --port={{ .Values.service.targetPort }}
             - --cert=/etc/webhook/certs/tls.crt
@@ -40,25 +48,23 @@ spec:
           livenessProbe:
             httpGet:
               path: /healthz
-              port: {{ .Values.service.targetPort }}
+              port: https
               scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /healthz
-              port: {{ .Values.service.targetPort }}
+              path: /readyz
+              port: https
               scheme: HTTPS
             initialDelaySeconds: 3
             periodSeconds: 5
           securityContext:
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            {{- toYaml .Values.securityContext | nindent 12 }}
       volumes:
         - name: certs
           secret:
-            secretName: {{ .Release.Name }}-tls
+            secretName: {{ include "k8s-policy-webhook.tlsSecretName" . }}
         - name: config
           configMap:
-            name: {{ .Release.Name }}-policy
+            name: {{ include "k8s-policy-webhook.fullname" . }}-policy
