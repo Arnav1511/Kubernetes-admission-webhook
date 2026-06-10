@@ -1,0 +1,18 @@
+# Build outputs
+bin/
+coverage
+coverage.out
+webhook
+
+# Local TLS material
+certs/
+*.key
+*.crt
+*.csr
+*.srl
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

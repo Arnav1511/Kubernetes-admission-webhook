@@ -1,149 +1,134 @@
 # k8s-policy-webhook
 
-[![Interactive Walkthrough](https://img.shields.io/badge/Interactive_Walkthrough-Click_Here-blue?style=for-the-badge)](https://arnav1511.github.io/Kubernetes-admission-webhook/)
+[![CI](https://github.com/Arnav1511/Kubernetes-admission-webhook/actions/workflows/ci.yml/badge.svg)](https://github.com/Arnav1511/Kubernetes-admission-webhook/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/Arnav1511/Kubernetes-admission-webhook)](go.mod)
+[![GHCR](https://img.shields.io/badge/GHCR-k8s--policy--webhook-blue)](https://github.com/Arnav1511/Kubernetes-admission-webhook/pkgs/container/k8s-policy-webhook)
+[![Interactive Walkthrough](https://img.shields.io/badge/interactive-walkthrough-blue)](https://arnav1511.github.io/Kubernetes-admission-webhook/)
 
-A Kubernetes **validating admission webhook** written in Go that enforces deployment policies at the cluster level. When a Pod or Deployment is created/updated, this webhook intercepts the request and rejects it if it violates any configured policy.
+`k8s-policy-webhook` is a focused Kubernetes validating admission webhook written in Go. It intercepts Pod and Deployment create/update requests and rejects workloads that violate a small, configurable set of deployment policies.
 
-Think of it as a lightweight, self-hosted alternative to OPA Gatekeeper or Kyverno — focused, fast, and easy to extend.
+This project is intentionally lightweight and educational. It can be useful for simple cluster policy demonstrations or focused enforcement, but it is not a complete replacement for mature policy engines such as Kyverno, OPA Gatekeeper, or ValidatingAdmissionPolicy in every production use case.
 
-## Policies enforced
+## Names
+
+| Thing | Value |
+| --- | --- |
+| GitHub repository | `Arnav1511/Kubernetes-admission-webhook` |
+| Go module | `github.com/Arnav1511/k8s-policy-webhook` |
+| Application and binary | `k8s-policy-webhook` |
+| Helm release examples | `k8s-policy-webhook` |
+| GHCR image | `ghcr.io/arnav1511/k8s-policy-webhook` |
+
+## Policies
 
 | Policy | What it catches | Why it matters |
-|--------|----------------|----------------|
-| **Block `:latest` tag** | Rejects untagged images or `:latest` | Prevents non-reproducible deployments |
-| **Require resource limits** | Rejects containers without CPU/memory limits | Prevents noisy-neighbor resource starvation |
-| **Require labels** | Rejects pods missing mandatory labels (e.g. `app`, `owner`) | Enforces ownership and observability |
-| **Block privilege escalation** | Rejects privileged containers or `allowPrivilegeEscalation: true` | Hardens runtime security posture |
-| **Block registries** | Rejects images from untrusted registries | Supply chain security |
-| **Max replica count** | Caps Deployment replicas | Prevents accidental resource explosion |
-| **Exempt namespaces** | Skips checks for system namespaces | Avoids breaking core cluster components |
+| --- | --- | --- |
+| Block `:latest` and untagged images | Rejects `nginx`, `nginx:latest`, and malformed references | Encourages reproducible deployments |
+| Allow digest-pinned images | Allows valid references such as `nginx@sha256:<digest>` | Supports immutable image pinning |
+| Require resource limits | Rejects containers missing CPU or memory limits | Reduces noisy-neighbor risk |
+| Require labels | Rejects pods missing labels such as `app` and `owner` | Improves ownership and observability |
+| Block privilege escalation | Rejects privileged containers or `allowPrivilegeEscalation: true` | Hardens runtime posture |
+| Block hostNetwork | Rejects pods using host networking | Reduces node network exposure |
+| Block registries | Rejects images from configured registry prefixes | Helps enforce supply-chain policy |
+| Max replica count | Caps Deployment replicas | Prevents accidental resource spikes |
+| Exempt namespaces | Skips configured system namespaces | Avoids breaking cluster components |
 
-All policies are configurable via a YAML file — toggle each one on/off independently.
+## Local Quick Start
 
-## Architecture
-
-```mermaid
-flowchart LR
-    U[kubectl apply] -->|create/update| API[K8s API Server]
-    API -->|AdmissionReview| WH[k8s-policy-webhook :8443]
-    WH -->|validate| V{Policy checks}
-    V -->|pass| ALLOW[Allowed - resource created]
-    V -->|fail| DENY[Denied - error returned to user]
-```
-
-The webhook runs as a Deployment inside the cluster. The Kubernetes API server sends every Pod/Deployment create/update request to it as an `AdmissionReview`. The webhook validates against the configured policies and returns allow/deny.
-
-## Project structure
-
-```
-.
-├── cmd/webhook/main.go              # Server entrypoint, TLS, graceful shutdown
-├── internal/
-│   ├── config/config.go             # Policy YAML loader + defaults
-│   ├── handler/handler.go           # HTTP handler, AdmissionReview processing
-│   └── validator/
-│       ├── validator.go             # Core validation logic
-│       └── validator_test.go        # Unit tests (30+ test cases)
-├── deploy/
-│   ├── policy.yaml                  # Example policy configuration
-│   └── helm/                        # Helm chart for production deployment
-│       ├── Chart.yaml
-│       ├── values.yaml
-│       └── templates/
-│           ├── deployment.yaml
-│           ├── service.yaml
-│           ├── webhook.yaml         # ValidatingWebhookConfiguration
-│           └── configmap.yaml       # Policy config as ConfigMap
-├── hack/gen-certs.sh                # Self-signed TLS cert generator for local dev
-├── .github/workflows/ci.yaml       # CI: test → lint → build → push to GHCR
-├── Dockerfile                       # Multi-stage build (distroless, nonroot)
-└── go.mod
-```
-
-## Quick start (local)
-
-**Prerequisites:** Go 1.22+, Docker, a running Kubernetes cluster (Minikube/Kind), `kubectl`, `openssl`
+Prerequisites: Go 1.22 or newer. Docker, Helm, kubectl, OpenSSL, and Bash are needed for the full local verification and cluster workflow.
 
 ```bash
-# 1. Clone
-git clone https://github.com/Arnav1511/k8s-policy-webhook.git
-cd k8s-policy-webhook
+git clone https://github.com/Arnav1511/Kubernetes-admission-webhook.git
+cd Kubernetes-admission-webhook
 
-# 2. Run tests
-go test -v ./...
+go test ./...
+go build -o k8s-policy-webhook ./cmd/webhook
 
-# 3. Generate self-signed TLS certs for local testing
-chmod +x hack/gen-certs.sh
-./hack/gen-certs.sh certs
-
-# 4. Build and run locally (outside cluster, for testing)
-go build -o webhook ./cmd/webhook
-./webhook --cert=certs/tls.crt --key=certs/tls.key --config=deploy/policy.yaml --port=8443
-
-# 5. Test with a sample admission review
-curl -k -X POST https://localhost:8443/validate \
-  -H "Content-Type: application/json" \
-  -d @hack/test-admission-review.json
+./hack/gen-certs.sh k8s-policy-webhook default certs
+./k8s-policy-webhook \
+  --cert=certs/tls.crt \
+  --key=certs/tls.key \
+  --config=deploy/policy.yaml \
+  --port=8443
 ```
 
-## Deploy to cluster (Helm)
+In another terminal:
 
 ```bash
-# 1. Build and push the image
-docker build -t ghcr.io/arnav1511/k8s-policy-webhook:v1 .
-docker push ghcr.io/arnav1511/k8s-policy-webhook:v1
-
-# 2. Create TLS secret (or use cert-manager in production)
-./hack/gen-certs.sh certs
-kubectl create secret tls k8s-policy-webhook-tls \
-  --cert=certs/tls.crt --key=certs/tls.key -n default
-
-# 3. Install via Helm
-helm install k8s-policy-webhook deploy/helm/ \
-  --set image.tag=v1
-
-# 4. Verify
-kubectl get pods -l app=k8s-policy-webhook
-kubectl get validatingwebhookconfigurations
+curl -k https://localhost:8443/healthz
+curl -k https://localhost:8443/readyz
 ```
 
-## Test it
+## Helm Install
 
-After deploying, try creating a pod that violates policies:
+The chart supports two TLS modes. Use exactly one.
+
+### Mode A: cert-manager
+
+Use this mode when cert-manager is installed in the cluster and should issue the webhook serving certificate.
 
 ```bash
-# This should be REJECTED (no tag, no resource limits, no labels)
-kubectl run bad-pod --image=nginx
+helm upgrade --install k8s-policy-webhook deploy/helm \
+  --namespace k8s-policy-webhook \
+  --create-namespace \
+  --set certManager.enabled=true \
+  --set image.tag=1.0.0
+```
 
-# This should be ALLOWED
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: good-pod
-  labels:
-    app: demo
-    owner: arnav
-spec:
-  containers:
-    - name: web
-      image: nginx:1.25.3
-      resources:
-        limits:
-          cpu: 100m
-          memory: 128Mi
-      securityContext:
-        allowPrivilegeEscalation: false
-EOF
+The chart renders an Issuer by default, a cert-manager Certificate, mounts the generated Secret, and annotates the ValidatingWebhookConfiguration with `cert-manager.io/inject-ca-from`.
+
+### Mode B: externally provided certificate
+
+Use this mode when you create the TLS Secret yourself. The CA bundle is required and must be base64 encoded.
+
+```bash
+./hack/gen-certs.sh k8s-policy-webhook k8s-policy-webhook certs
+
+kubectl create namespace k8s-policy-webhook --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n k8s-policy-webhook create secret tls k8s-policy-webhook-tls \
+  --cert=certs/tls.crt \
+  --key=certs/tls.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+CA_BUNDLE="$(base64 < certs/ca.crt | tr -d '\n')"
+
+helm upgrade --install k8s-policy-webhook deploy/helm \
+  --namespace k8s-policy-webhook \
+  --set certManager.enabled=false \
+  --set tls.existingSecretName=k8s-policy-webhook-tls \
+  --set webhook.caBundle="${CA_BUNDLE}" \
+  --set image.tag=1.0.0
+```
+
+## Verify The Webhook
+
+```bash
+kubectl -n k8s-policy-webhook get pods,svc
+kubectl get validatingwebhookconfigurations k8s-policy-webhook
+kubectl -n k8s-policy-webhook logs deploy/k8s-policy-webhook
+```
+
+Rejected example:
+
+```bash
+kubectl apply -f examples/bad-pod.yaml
+```
+
+Accepted example:
+
+```bash
+kubectl apply -f examples/good-pod.yaml
 ```
 
 ## Configuration
 
-Edit `deploy/policy.yaml` or the Helm ConfigMap to customize policies:
+Edit `deploy/policy.yaml` for local runs or `policy` values in `deploy/helm/values.yaml` for Helm installs.
 
 ```yaml
 blockLatestTag: true
 requireResourceLimits: true
+blockHostNetwork: true
 requireLabels:
   - app
   - owner
@@ -153,18 +138,37 @@ blockPrivilegeEscalation: true
 maxReplicaCount: 50
 exemptNamespaces:
   - kube-system
-  - argocd
+  - kube-public
+  - kube-node-lease
 ```
 
-## Tech stack
+## Development
 
-- **Go 1.22** — webhook server, validation logic, structured logging
-- **Kubernetes admission API (v1)** — AdmissionReview request/response
-- **Helm** — packaging and deployment
-- **GitHub Actions** — CI pipeline (test, lint, build, push to GHCR)
-- **Distroless** — minimal, secure container image
-- **zap** — structured logging
+```bash
+make fmt
+make test
+make lint
+make helm-lint
+make docker-build
+make verify
+```
 
-## Author
+The Go policy behavior is covered by a table-driven test suite.
 
-**Arnav Ranjan** — DevOps Engineer | [LinkedIn](https://www.linkedin.com/in/arnav-ranjan-89162320a/) | [GitHub](https://github.com/Arnav1511)
+## Troubleshooting
+
+Empty `caBundle`: when `certManager.enabled=false`, set `webhook.caBundle` to the base64-encoded CA certificate that signed the webhook server certificate. Helm intentionally fails when this value is missing.
+
+Certificate SAN mismatch: regenerate the certificate with the actual Service name and namespace: `./hack/gen-certs.sh k8s-policy-webhook k8s-policy-webhook certs`. The certificate must include `<service>`, `<service>.<namespace>`, `<service>.<namespace>.svc`, and `<service>.<namespace>.svc.cluster.local`.
+
+Webhook timeout: check that the pod is Ready, the Service selects the pod, the API server can reach port 443, and any NetworkPolicy permits API server ingress.
+
+`failurePolicy` behavior: the default is `Fail`, which blocks matching workload admission if the webhook is unreachable or returns an error. Use `--set webhook.failurePolicy=Ignore` only when availability is more important than strict enforcement.
+
+Accidentally blocking system namespaces: keep critical namespaces in `policy.exemptNamespaces` and in `webhook.namespaceSelector`. Validate changes in a non-production cluster before widening enforcement.
+
+## Interactive Walkthrough
+
+The GitHub Pages walkthrough is preserved in `docs/index.html` and published at:
+
+https://arnav1511.github.io/Kubernetes-admission-webhook/

@@ -17,7 +17,7 @@ type Policy struct {
 	// RequireLabels lists labels that must be present on every pod
 	RequireLabels []string `yaml:"requireLabels"`
 
-	// Arnav was here
+	// BlockHostNetwork rejects pods that use the host network namespace
 	BlockHostNetwork bool `yaml:"blockHostNetwork"`
 
 	// BlockedRegistries rejects images from these registries
@@ -53,6 +53,7 @@ func Default() *Policy {
 		BlockLatestTag:           true,
 		RequireResourceLimits:    true,
 		RequireLabels:            []string{"app", "owner"},
+		BlockHostNetwork:         true,
 		BlockedRegistries:        []string{},
 		BlockPrivilegeEscalation: true,
 		MaxReplicaCount:          0,

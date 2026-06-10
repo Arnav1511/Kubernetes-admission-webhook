@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Arnav1511/k8s-policy-webhook/internal/config"
+	"github.com/distribution/reference"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -48,12 +49,12 @@ func (v *Validator) ValidatePod(pod *corev1.PodSpec, labels map[string]string, n
 		msgs := v.validateLabels(labels)
 		messages = append(messages, msgs...)
 	}
-	
-	// Block hostNetwork       
+
+	// Block hostNetwork
 	if v.policy.BlockHostNetwork && pod.HostNetwork {
-    messages = append(messages, "hostNetwork is not allowed — pods must use cluster networking")
-}
-	
+		messages = append(messages, "hostNetwork is not allowed - pods must use cluster networking")
+	}
+
 	return Result{
 		Allowed:  len(messages) == 0,
 		Messages: messages,
@@ -177,15 +178,20 @@ func (v *Validator) validateLabels(labels map[string]string) []string {
 	return msgs
 }
 
-// isLatestOrUntagged returns true if the image uses :latest or has no tag.
+// isLatestOrUntagged returns true if the image uses :latest, has no tag, or is malformed.
 func isLatestOrUntagged(image string) bool {
-	// Handle digest references (always pinned)
-	if strings.Contains(image, "@sha256:") {
+	// The distribution/reference parser follows Docker/OCI image reference rules
+	// and avoids mistaking registry ports (example.com:5000/app) for image tags.
+	ref, err := reference.ParseNormalizedNamed(image)
+	if err != nil {
+		return true
+	}
+	if _, ok := ref.(reference.Canonical); ok {
 		return false
 	}
-	parts := strings.Split(image, ":")
-	if len(parts) == 1 {
-		return true // no tag at all
+	tagged, ok := ref.(reference.Tagged)
+	if !ok {
+		return true
 	}
-	return parts[len(parts)-1] == "latest"
+	return tagged.Tag() == "latest"
 }

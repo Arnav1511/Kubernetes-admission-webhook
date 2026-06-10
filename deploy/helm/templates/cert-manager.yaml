@@ -1,0 +1,36 @@
+{{- if .Values.certManager.enabled }}
+{{- if .Values.certManager.issuer.create }}
+apiVersion: cert-manager.io/v1
+kind: {{ .Values.certManager.issuer.kind }}
+metadata:
+  name: {{ include "k8s-policy-webhook.issuerName" . }}
+  {{- if ne .Values.certManager.issuer.kind "ClusterIssuer" }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "k8s-policy-webhook.labels" . | nindent 4 }}
+spec:
+  {{- toYaml .Values.certManager.issuer.spec | nindent 2 }}
+---
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "k8s-policy-webhook.certificateName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s-policy-webhook.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "k8s-policy-webhook.tlsSecretName" . }}
+  duration: {{ .Values.certManager.certificate.duration }}
+  renewBefore: {{ .Values.certManager.certificate.renewBefore }}
+  dnsNames:
+    - {{ include "k8s-policy-webhook.fullname" . }}
+    - {{ include "k8s-policy-webhook.fullname" . }}.{{ .Release.Namespace }}
+    - {{ include "k8s-policy-webhook.fullname" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "k8s-policy-webhook.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: {{ include "k8s-policy-webhook.issuerName" . }}
+    kind: {{ .Values.certManager.issuer.kind }}
+    group: {{ .Values.certManager.issuer.group }}
+{{- end }}

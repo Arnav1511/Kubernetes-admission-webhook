@@ -60,10 +60,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/validate", wh.Validate)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
-	})
+	mux.HandleFunc("/healthz", healthz)
+	mux.HandleFunc("/readyz", readyz)
 
 	srv := &http.Server{
 		Addr: fmt.Sprintf(":%d", port),
@@ -94,4 +92,14 @@ func main() {
 		sugar.Fatalw("Server forced shutdown", "error", err)
 	}
 	sugar.Info("Server exited cleanly")
+}
+
+func healthz(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
+func readyz(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
 }
