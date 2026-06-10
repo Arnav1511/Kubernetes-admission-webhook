@@ -14,7 +14,7 @@ This project is intentionally lightweight and educational. It can be useful for 
 
 | Thing | Value |
 | --- | --- |
-| GitHub repository | `Arnav1511/Kubernetes-admission-webhook` |
+| GitHub repository | `https://github.com/Arnav1511/Kubernetes-admission-webhook` |
 | Go module | `github.com/Arnav1511/k8s-policy-webhook` |
 | Application and binary | `k8s-policy-webhook` |
 | Helm release examples | `k8s-policy-webhook` |
@@ -154,6 +154,8 @@ make verify
 ```
 
 The Go policy behavior is covered by a table-driven test suite.
+
+CI is defined in `.github/workflows/ci.yml` and runs Go formatting, vet, race-enabled tests, golangci-lint, Helm lint/rendering, Docker image builds, and Trivy scans. The badge at the top reflects the actual workflow result after GitHub Actions runs it.
 
 ## Troubleshooting
 

@@ -14,13 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-)
-
-var (
-	scheme = runtime.NewScheme()
-	codecs = serializer.NewCodecFactory(scheme)
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // WebhookHandler handles admission review requests.
@@ -130,19 +124,11 @@ func (wh *WebhookHandler) Validate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respBytes, err := json.Marshal(response)
-	if err != nil {
-		wh.logger.Errorw("Failed to marshal response", "error", err)
-		http.Error(w, "failed to marshal response", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(respBytes)
+	wh.writeAdmissionReview(w, response)
 }
 
 // sendError sends an error admission response.
-func (wh *WebhookHandler) sendError(w http.ResponseWriter, uid interface{}, msg string) {
+func (wh *WebhookHandler) sendError(w http.ResponseWriter, uid types.UID, msg string) {
 	wh.logger.Errorw("Admission error", "message", msg)
 	resp := &admissionv1.AdmissionReview{
 		TypeMeta: metav1.TypeMeta{
@@ -150,6 +136,7 @@ func (wh *WebhookHandler) sendError(w http.ResponseWriter, uid interface{}, msg 
 			Kind:       "AdmissionReview",
 		},
 		Response: &admissionv1.AdmissionResponse{
+			UID:     uid,
 			Allowed: false,
 			Result: &metav1.Status{
 				Code:    http.StatusInternalServerError,
@@ -157,7 +144,19 @@ func (wh *WebhookHandler) sendError(w http.ResponseWriter, uid interface{}, msg 
 			},
 		},
 	}
-	respBytes, _ := json.Marshal(resp)
+	wh.writeAdmissionReview(w, resp)
+}
+
+func (wh *WebhookHandler) writeAdmissionReview(w http.ResponseWriter, resp *admissionv1.AdmissionReview) {
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		wh.logger.Errorw("Failed to marshal admission review response", "error", err)
+		http.Error(w, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(respBytes)
+	if _, err := w.Write(respBytes); err != nil {
+		wh.logger.Errorw("Failed to write admission review response", "error", err)
+	}
 }

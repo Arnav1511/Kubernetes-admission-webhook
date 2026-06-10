@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -31,9 +32,17 @@ func main() {
 	flag.Parse()
 
 	// Initialize structured logger
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
 	sugar := logger.Sugar()
+	defer func() {
+		if err := logger.Sync(); err != nil && !isIgnorableLoggerSyncError(err) {
+			sugar.Warnw("Failed to sync logger", "error", err)
+		}
+	}()
 
 	// Load policy configuration
 	policyCfg, err := config.Load(cfgFile)
@@ -95,11 +104,21 @@ func main() {
 }
 
 func healthz(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
+	writePlainOK(w, "ok")
 }
 
 func readyz(w http.ResponseWriter, r *http.Request) {
+	writePlainOK(w, "ok")
+}
+
+func writePlainOK(w http.ResponseWriter, body string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
+	if _, err := w.Write([]byte(body)); err != nil {
+		return
+	}
+}
+
+func isIgnorableLoggerSyncError(err error) bool {
+	return errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTTY)
 }
