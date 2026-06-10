@@ -16,3 +16,4 @@ certs/
 Thumbs.db
 .idea/
 .vscode/
+.tools/

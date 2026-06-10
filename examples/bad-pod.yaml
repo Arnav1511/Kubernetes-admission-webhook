@@ -4,7 +4,22 @@ metadata:
   name: bad-pod
   labels:
     app: demo
+    owner: platform-team
 spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: web
       image: nginx:latest
+      resources:
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true

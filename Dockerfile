@@ -1,6 +1,7 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26.4-alpine AS builder
 
 WORKDIR /app
+RUN apk upgrade --no-cache
 COPY go.mod go.sum ./
 RUN go mod download
 
