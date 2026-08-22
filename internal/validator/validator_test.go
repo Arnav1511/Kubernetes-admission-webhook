@@ -222,3 +222,121 @@ func TestBlockedRegistries(t *testing.T) {
 		})
 	}
 }
+
+func TestEphemeralContainersAreValidated(t *testing.T) {
+	v := New(&config.Policy{
+		BlockLatestTag:           true,
+		BlockPrivilegeEscalation: true,
+		BlockedRegistries:        []string{"evil.example.com"},
+	})
+
+	tests := []struct {
+		name      string
+		ephemeral corev1.EphemeralContainer
+		allowed   bool
+	}{
+		{
+			"pinned debug image is allowed",
+			corev1.EphemeralContainer{EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name: "debugger", Image: "busybox:1.36.1",
+			}},
+			true,
+		},
+		{
+			"latest tag is blocked",
+			corev1.EphemeralContainer{EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name: "debugger", Image: "busybox:latest",
+			}},
+			false,
+		},
+		{
+			"untagged image is blocked",
+			corev1.EphemeralContainer{EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name: "debugger", Image: "busybox",
+			}},
+			false,
+		},
+		{
+			"privileged escalation is blocked",
+			corev1.EphemeralContainer{EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name:            "debugger",
+				Image:           "busybox:1.36.1",
+				SecurityContext: &corev1.SecurityContext{Privileged: boolPtr(true)},
+			}},
+			false,
+		},
+		{
+			"blocked registry is rejected",
+			corev1.EphemeralContainer{EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name: "debugger", Image: "evil.example.com/tools:1.0.0",
+			}},
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.PodSpec{
+				Containers:          []corev1.Container{{Name: "app", Image: "nginx:1.25.3"}},
+				EphemeralContainers: []corev1.EphemeralContainer{tt.ephemeral},
+			}
+			result := v.ValidatePod(pod, map[string]string{}, "default")
+			if result.Allowed != tt.allowed {
+				t.Errorf("got allowed=%v, want %v. Messages: %v",
+					result.Allowed, tt.allowed, result.Messages)
+			}
+		})
+	}
+}
+
+// Ephemeral containers cannot carry resource limits: the Kubernetes API rejects
+// a spec that sets them. The resource-limit policy must therefore not apply, or
+// every ephemeral container would be denied.
+func TestEphemeralContainersExemptFromResourceLimits(t *testing.T) {
+	v := New(&config.Policy{RequireResourceLimits: true})
+
+	pod := &corev1.PodSpec{
+		Containers: []corev1.Container{{
+			Name:  "app",
+			Image: "nginx:1.25.3",
+			Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			}},
+		}},
+		EphemeralContainers: []corev1.EphemeralContainer{{
+			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name: "debugger", Image: "busybox:1.36.1",
+			},
+		}},
+	}
+
+	result := v.ValidatePod(pod, map[string]string{}, "default")
+	if !result.Allowed {
+		t.Errorf("ephemeral container without resource limits should be allowed, got: %v", result.Messages)
+	}
+}
+
+// ValidatePod must not mutate the PodSpec it is handed.
+func TestValidatePodDoesNotMutateSpec(t *testing.T) {
+	v := New(&config.Policy{BlockLatestTag: true})
+
+	containers := make([]corev1.Container, 1, 4) // spare capacity
+	containers[0] = corev1.Container{Name: "app", Image: "nginx:1.25.3"}
+	pod := &corev1.PodSpec{
+		Containers:     containers,
+		InitContainers: []corev1.Container{{Name: "init", Image: "busybox:1.36.1"}},
+	}
+
+	v.ValidatePod(pod, map[string]string{}, "default")
+
+	if len(pod.Containers) != 1 {
+		t.Fatalf("Containers length changed: got %d, want 1", len(pod.Containers))
+	}
+	if pod.Containers[0].Name != "app" {
+		t.Errorf("Containers[0] was overwritten: got %q, want %q", pod.Containers[0].Name, "app")
+	}
+	if got := pod.Containers[:2][1].Name; got == "init" {
+		t.Error("InitContainers leaked into the Containers backing array")
+	}
+}
