@@ -30,10 +30,21 @@ webhooks:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: [""]
         apiVersions: ["v1"]
-        resources: ["pods"]
+        # pods/ephemeralcontainers is the subresource kubectl debug uses to
+        # attach a container to a running pod. Without it, that path bypasses
+        # every image and privilege policy enforced here.
+        resources: ["pods", "pods/ephemeralcontainers"]
       - operations: ["CREATE", "UPDATE"]
         apiGroups: ["apps"]
         apiVersions: ["v1"]
         resources: ["deployments"]
+    # The webhook's own namespace is always excluded, on top of whatever
+    # webhook.namespaceSelector configures. Without this the API server calls
+    # the webhook to admit the webhook's own pods: with failurePolicy=Fail
+    # nothing can start on a cold cluster, and a full outage is unrecoverable.
     namespaceSelector:
-      {{- toYaml .Values.webhook.namespaceSelector | nindent 6 }}
+      {{- $selector := deepCopy .Values.webhook.namespaceSelector }}
+      {{- $expressions := $selector.matchExpressions | default list }}
+      {{- $ownNamespace := dict "key" "kubernetes.io/metadata.name" "operator" "NotIn" "values" (list .Release.Namespace) }}
+      {{- $_ := set $selector "matchExpressions" (append $expressions $ownNamespace) }}
+      {{- toYaml $selector | nindent 6 }}

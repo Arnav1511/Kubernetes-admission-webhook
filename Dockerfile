@@ -10,5 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /webhook ./cmd/webhook
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=builder /webhook /webhook
-USER nonroot:nonroot
+# Numeric UID/GID (distroless 'nonroot'): a kubelet enforcing runAsNonRoot
+# cannot verify a non-numeric username and will refuse to start the container.
+USER 65532:65532
 ENTRYPOINT ["/webhook"]
