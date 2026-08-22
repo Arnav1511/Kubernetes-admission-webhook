@@ -157,6 +157,23 @@ The Go policy behavior is covered by a table-driven test suite.
 
 CI is defined in `.github/workflows/ci.yml` and runs Go formatting, vet, race-enabled tests, golangci-lint, Helm lint/rendering, Docker image builds, and Trivy scans. The badge at the top reflects the actual workflow result after GitHub Actions runs it.
 
+### End-to-end tests
+
+`hack/e2e.sh` installs the chart into a throwaway kind cluster and asserts admit/deny against a real API server, including the `pods/ephemeralcontainers` path. It runs in CI as the `Cluster E2E` job, and `publish-image` depends on it so an image that cannot deploy is never published. Run it locally with `hack/e2e.sh`, or `KEEP_CLUSTER=1 hack/e2e.sh` to leave the cluster up for debugging. It needs `kind`, `kubectl`, `helm`, `docker` and `openssl`.
+
+`helm lint` and `helm template` only render YAML, so deployment-time faults are invisible to them. Run the e2e suite before releasing, and after any change to `deploy/helm`, the `Dockerfile`, or the webhook rules.
+
+### Keeping the build green
+
+The Trivy gates run with `ignore-unfixed`, so anything they report already has an upstream fix. Two automations apply those fixes:
+
+- **`auto-remediate.yml`** (Mondays 05:00 UTC) bumps vulnerable Go modules, including indirect ones — the gap Dependabot does not cover, and where these gates usually break. It verifies the bump and re-scans before opening a PR.
+- **`dependabot-auto-merge.yml`** enables auto-merge on Dependabot's patch and minor updates. Major bumps are left for a human.
+
+Neither merges anything without the full CI suite passing.
+
+> **One-time setup:** `auto-remediate.yml` needs a repository secret named `AUTOMATION_TOKEN` — a fine-grained PAT with `contents: read/write` and `pull requests: read/write` on this repository. A pull request opened with the default `GITHUB_TOKEN` does not start CI, so auto-merge would never fire and the PR would sit forever. Without the secret the workflow still opens the PR; it just has to be merged by hand.
+
 ## Troubleshooting
 
 Empty `caBundle`: when `certManager.enabled=false`, set `webhook.caBundle` to the base64-encoded CA certificate that signed the webhook server certificate. Helm intentionally fails when this value is missing.
