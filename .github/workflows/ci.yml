@@ -194,6 +194,14 @@ jobs:
             docker save --platform linux/amd64 "$image" -o /tmp/preload.tar
             kind load image-archive /tmp/preload.tar --name policy-e2e
           done
+          # A silent load leaves the cluster pulling from Docker Hub mid-test,
+          # which shows up as an unexplained readiness timeout. Fail loudly here.
+          echo "images present in the cluster:"
+          docker exec policy-e2e-control-plane crictl images
+          for image in nginxinc/nginx-unprivileged busybox; do
+            docker exec policy-e2e-control-plane crictl images | grep -q "$image" || {
+              echo "::error::$image was not loaded into the cluster"; exit 1; }
+          done
 
       # The cluster above is reused; the runner is discarded either way.
       - name: Run end-to-end suite
@@ -204,10 +212,18 @@ jobs:
       - name: Dump diagnostics on failure
         if: failure()
         run: |
+          echo "::group::webhook"
           kubectl -n webhook-system get pods -o wide || true
-          kubectl -n webhook-system describe deploy/k8s-policy-webhook || true
           kubectl -n webhook-system logs -l app.kubernetes.io/name=k8s-policy-webhook --tail=100 || true
-          kubectl get validatingwebhookconfigurations -o yaml || true
+          echo "::endgroup::"
+          echo "::group::test workload"
+          kubectl -n policy-test get pods -o wide || true
+          kubectl -n policy-test describe pod good-pod || true
+          kubectl -n policy-test get events --sort-by=.lastTimestamp || true
+          echo "::endgroup::"
+          echo "::group::cluster images"
+          docker exec policy-e2e-control-plane crictl images || true
+          echo "::endgroup::"
 
   publish-image:
     name: Publish Image
