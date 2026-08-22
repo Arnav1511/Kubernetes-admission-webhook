@@ -37,8 +37,12 @@ func (v *Validator) ValidatePod(pod *corev1.PodSpec, labels map[string]string, n
 		}
 	}
 
-	// Check all containers (init + regular)
-	allContainers := append(pod.Containers, pod.InitContainers...)
+	// Check all containers (init + regular). Build a fresh slice: appending
+	// directly to pod.Containers can write into its backing array and mutate
+	// the caller's PodSpec when it has spare capacity.
+	allContainers := make([]corev1.Container, 0, len(pod.Containers)+len(pod.InitContainers))
+	allContainers = append(allContainers, pod.Containers...)
+	allContainers = append(allContainers, pod.InitContainers...)
 	for _, c := range allContainers {
 		msgs := v.validateContainer(c)
 		messages = append(messages, msgs...)

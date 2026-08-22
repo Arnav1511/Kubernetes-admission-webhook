@@ -76,6 +76,7 @@ func main() {
 		Addr: fmt.Sprintf(":%d", port),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
 		},
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
