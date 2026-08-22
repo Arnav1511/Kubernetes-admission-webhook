@@ -31,10 +31,15 @@ func NewWebhookHandler(policy *config.Policy, logger *zap.SugaredLogger) *Webhoo
 	}
 }
 
+// maxBodyBytes caps an AdmissionReview payload. The API server rejects
+// admission requests larger than this, so anything bigger is not a legitimate
+// review and would otherwise be read straight into memory.
+const maxBodyBytes = 8 << 20 // 8 MiB
+
 // Validate processes a ValidatingAdmissionWebhook request.
 func (wh *WebhookHandler) Validate(w http.ResponseWriter, r *http.Request) {
-	// Read request body
-	body, err := io.ReadAll(r.Body)
+	// Read request body, bounded so an oversized payload cannot exhaust memory
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 	if err != nil {
 		wh.logger.Errorw("Failed to read request body", "error", err)
 		http.Error(w, "failed to read body", http.StatusBadRequest)
