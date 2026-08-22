@@ -44,7 +44,17 @@ func (v *Validator) ValidatePod(pod *corev1.PodSpec, labels map[string]string, n
 	allContainers = append(allContainers, pod.Containers...)
 	allContainers = append(allContainers, pod.InitContainers...)
 	for _, c := range allContainers {
-		msgs := v.validateContainer(c)
+		msgs := v.validateContainer(c, "container", true)
+		messages = append(messages, msgs...)
+	}
+
+	// Ephemeral containers are attached to a running pod via the
+	// pods/ephemeralcontainers subresource and would otherwise be an
+	// unchecked path to a privileged or untrusted image. The Kubernetes API
+	// forbids setting resources on them, so the resource-limit policy is not
+	// applied here -- enforcing it would reject every ephemeral container.
+	for _, ec := range pod.EphemeralContainers {
+		msgs := v.validateContainer(corev1.Container(ec.EphemeralContainerCommon), "ephemeral container", false)
 		messages = append(messages, msgs...)
 	}
 
@@ -100,38 +110,40 @@ func (v *Validator) ValidateDeployment(deploy *appsv1.Deployment) Result {
 	}
 }
 
-// validateContainer checks a single container against policies.
-func (v *Validator) validateContainer(c corev1.Container) []string {
+// validateContainer checks a single container against policies. kind names the
+// container type in violation messages, and enforceResourceLimits is false for
+// container types that cannot carry resource limits.
+func (v *Validator) validateContainer(c corev1.Container, kind string, enforceResourceLimits bool) []string {
 	var msgs []string
 
 	// Block :latest tag or untagged images
 	if v.policy.BlockLatestTag {
 		if isLatestOrUntagged(c.Image) {
 			msgs = append(msgs, fmt.Sprintf(
-				"container %q uses image %q — :latest or untagged images are not allowed; pin a specific version",
-				c.Name, c.Image,
+				"%s %q uses image %q — :latest or untagged images are not allowed; pin a specific version",
+				kind, c.Name, c.Image,
 			))
 		}
 	}
 
 	// Require resource limits
-	if v.policy.RequireResourceLimits {
+	if v.policy.RequireResourceLimits && enforceResourceLimits {
 		if c.Resources.Limits == nil {
 			msgs = append(msgs, fmt.Sprintf(
-				"container %q has no resource limits — CPU and memory limits are required",
-				c.Name,
+				"%s %q has no resource limits — CPU and memory limits are required",
+				kind, c.Name,
 			))
 		} else {
 			if _, ok := c.Resources.Limits[corev1.ResourceCPU]; !ok {
 				msgs = append(msgs, fmt.Sprintf(
-					"container %q is missing CPU limit",
-					c.Name,
+					"%s %q is missing CPU limit",
+					kind, c.Name,
 				))
 			}
 			if _, ok := c.Resources.Limits[corev1.ResourceMemory]; !ok {
 				msgs = append(msgs, fmt.Sprintf(
-					"container %q is missing memory limit",
-					c.Name,
+					"%s %q is missing memory limit",
+					kind, c.Name,
 				))
 			}
 		}
@@ -142,14 +154,14 @@ func (v *Validator) validateContainer(c corev1.Container) []string {
 		if c.SecurityContext != nil {
 			if c.SecurityContext.Privileged != nil && *c.SecurityContext.Privileged {
 				msgs = append(msgs, fmt.Sprintf(
-					"container %q runs in privileged mode — this is not allowed",
-					c.Name,
+					"%s %q runs in privileged mode — this is not allowed",
+					kind, c.Name,
 				))
 			}
 			if c.SecurityContext.AllowPrivilegeEscalation != nil && *c.SecurityContext.AllowPrivilegeEscalation {
 				msgs = append(msgs, fmt.Sprintf(
-					"container %q allows privilege escalation — set allowPrivilegeEscalation: false",
-					c.Name,
+					"%s %q allows privilege escalation — set allowPrivilegeEscalation: false",
+					kind, c.Name,
 				))
 			}
 		}
@@ -159,8 +171,8 @@ func (v *Validator) validateContainer(c corev1.Container) []string {
 	for _, reg := range v.policy.BlockedRegistries {
 		if strings.HasPrefix(c.Image, reg) {
 			msgs = append(msgs, fmt.Sprintf(
-				"container %q uses image from blocked registry %q",
-				c.Name, reg,
+				"%s %q uses image from blocked registry %q",
+				kind, c.Name, reg,
 			))
 		}
 	}
