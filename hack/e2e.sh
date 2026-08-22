@@ -95,6 +95,21 @@ echo "==> Compliant pod actually starts"
 assert "compliant pod reaches Ready" allow \
   kubectl -n "$TEST_NS" wait --for=condition=Ready pod/good-pod --timeout=180s
 
+# Ready alone is not enough: with no readiness probe a container that crashes
+# after a second still passes the wait above during its brief running window.
+stays_up() {
+  sleep 15
+  local restarts
+  restarts="$(kubectl -n "$TEST_NS" get pod good-pod \
+    -o jsonpath='{.status.containerStatuses[0].restartCount}' 2>/dev/null)"
+  [ "${restarts:-1}" = "0" ] || {
+    echo "good-pod restarted ${restarts} time(s); it is not staying up" >&2
+    kubectl -n "$TEST_NS" logs good-pod --tail=20 --previous 2>/dev/null >&2 || true
+    return 1
+  }
+}
+assert "compliant pod stays up (no crash loop)" allow stays_up
+
 echo
 echo "==> Ephemeral containers (pods/ephemeralcontainers subresource)"
 assert "ephemeral container using :latest is denied" deny \

@@ -23,3 +23,16 @@ spec:
           drop:
             - ALL
         readOnlyRootFilesystem: true
+      # readOnlyRootFilesystem leaves nginx unable to create its temp paths
+      # ("mkdir() /tmp/proxy_temp failed (30: Read-only file system)"), so it
+      # needs writable scratch space mounted in.
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+  volumes:
+    - name: tmp
+      emptyDir: {}
+    - name: nginx-cache
+      emptyDir: {}
