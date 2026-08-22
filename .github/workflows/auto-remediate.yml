@@ -1,0 +1,129 @@
+name: Auto-remediate
+
+# Dependabot does not raise PRs for indirect Go modules, which is where the
+# Trivy gates actually break. The gates run with ignore-unfixed, so everything
+# they report already has an upstream fix: it can be applied mechanically.
+"on":
+  schedule:
+    # An hour ahead of the weekly CI scan, so a fix is usually already in
+    # flight by the time that runs.
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remediate:
+    name: Bump vulnerable modules
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          # Falls back to GITHUB_TOKEN, but a PR opened with that token does
+          # not start CI, so auto-merge would never fire. See the repository
+          # README for the AUTOMATION_TOKEN secret.
+          token: ${{ secrets.AUTOMATION_TOKEN || github.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Scan for fixable module vulnerabilities
+        id: scan
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:latest \
+            fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --format json --output /src/trivy.json . >/dev/null
+
+          packages="$(jq -r '
+            [ .Results[]? | select(.Type == "gomod") | .Vulnerabilities[]?.PkgName ]
+            | unique | .[]' trivy.json)"
+          rm -f trivy.json
+
+          if [ -z "$packages" ]; then
+            echo "no fixable module vulnerabilities"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "vulnerable modules:"; echo "$packages"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "packages<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$packages" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump them
+        if: steps.scan.outputs.found == 'true'
+        run: |
+          while read -r pkg; do
+            [ -n "$pkg" ] || continue
+            echo "bumping $pkg"
+            GOFLAGS=-mod=mod go get "$pkg@latest"
+          done <<< "${{ steps.scan.outputs.packages }}"
+          go mod tidy
+
+      # If a bump breaks the build or the tests, stop and leave the repo alone:
+      # that is the case a human needs to look at.
+      - name: Verify the bump
+        if: steps.scan.outputs.found == 'true'
+        run: |
+          gofmt -l .
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -race ./...
+
+      - name: Confirm the gate is actually clear
+        if: steps.scan.outputs.found == 'true'
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:latest \
+            fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --exit-code 1 .
+
+      - name: Open a pull request
+        if: steps.scan.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || github.token }}
+          PACKAGES: ${{ steps.scan.outputs.packages }}
+        run: |
+          if git diff --quiet; then
+            echo "nothing changed after the bump; nothing to open"
+            exit 0
+          fi
+
+          branch="auto/remediate-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add go.mod go.sum
+          git commit \
+            -m "fix(deps): bump modules flagged by the Trivy gate" \
+            -m "Applied automatically. Everything the gate reports has an upstream fix available, because it runs with ignore-unfixed." \
+            -m "Bumped:" -m "$PACKAGES" \
+            -m "gofmt, go vet, go test -race and a clean re-scan all passed before this was committed."
+          git push -u origin "$branch"
+
+          {
+            echo "Opened automatically by the Auto-remediate workflow."
+            echo
+            echo "Modules bumped:"
+            echo '```'
+            echo "$PACKAGES"
+            echo '```'
+            echo
+            echo "gofmt, go vet, go test -race and a clean re-scan all passed"
+            echo "before this PR was opened. Merging still waits on the full CI"
+            echo "suite, cluster e2e included."
+          } > /tmp/pr-body.md
+
+          gh pr create \
+            --title "fix(deps): bump modules flagged by the Trivy gate" \
+            --body-file /tmp/pr-body.md
+
+          gh pr merge --auto --squash \
+            || echo "::warning::could not enable auto-merge; merge this PR manually"
