@@ -23,6 +23,10 @@ resources:
 
 podSecurityContext:
   runAsNonRoot: true
+  # Must be numeric and must match the image's USER, or the kubelet cannot
+  # verify runAsNonRoot. 65532 is distroless 'nonroot'.
+  runAsUser: 65532
+  runAsGroup: 65532
   seccompProfile:
     type: RuntimeDefault
 
